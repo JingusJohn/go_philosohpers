@@ -1,19 +1,15 @@
 # Dining Philosophers
 
-This is another solution to the Dining Philosopher's problem written in [Go](https://go.dev) this time. There seem to be some issues where a
-philosopher will continue to eat and think back to back. Not exactly sure why that's happening, but it's not happening enough to be a serious concern.
+This is my golang-implementation of my solution to the dining philosopher's problem assigned to me in CSC-345. This solution makes use of golang's excellent concurrency features. This is by far the best and simplest solution that I've made thus far. I suggest anyone give Go a try.
 
 ## Visualizer
 
-I'd like to build a TUI based visualizer of this solution's processing. Should be quite doable. Just would probably use an atomic value for tracking the
-state of a philosopher (eating or thinking) and another for tracking their apetite.
+Unlike my other solutions to this problem, in this attempt, I've managed to create a visualizer for the progress of the philosophers. An improvement I'd like to make to the visualizer would be to make the progress bar resize based on the size of the terminal it's being ran in.
+
+![Progress](images/progress.png)
 
 ## Other Solutions
 
 - [Rust](https://github.com/JingusJohn/dining_philosophe_rs)
 - [C](https://github.com/JingusJohn/dining-philosophers/tree/main)
-
-So far, this has been my simplest solution. Golang's concurrency approach is so much simpler than what I had to deal with for C and Rust. I've wanted to
-create visualizers for those as well, but this one should actually be quite doable. Rust's borrow checker makes visualizing the changes quite difficult
-for me.
 
