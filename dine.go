@@ -5,9 +5,56 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
+
+type Status string
+
+const (
+	Eating   Status = "eating"
+	Thinking Status = "thinking"
+	Finished Status = "finished"
+  Unseated Status = "unseated"
+  NoStatus Status = ""
+)
+
+func GetStatusEmoji(s Status) (Status, error) {
+	switch s {
+	case Eating:
+		{
+      return "🍴", nil
+		}
+	case Thinking:
+		{
+			return "🤔", nil
+		}
+  case Finished:
+    {
+      return "❤️", nil
+    }
+  case Unseated:
+    {
+      return "😴", nil
+    }
+	}
+  return NoStatus, fmt.Errorf("Invalid status")
+}
+
+type Update struct {
+	philosopherId int
+	apetite       int
+	status        Status
+}
+
+func NewUpdate(id int, apetite int, status Status) *Update {
+	return &Update{
+		philosopherId: id,
+		apetite:       apetite,
+		status:        status,
+	}
+}
 
 type Philosopher struct {
 	leftFork  *sync.Mutex
@@ -38,18 +85,19 @@ func getLeftFork(id int, philosophersCount int) int {
 /*
 The selected philosopher dines (should be ran as go routine)
 */
-func (p Philosopher) Dine(wg *sync.WaitGroup) {
+func (p Philosopher) Dine(wg *sync.WaitGroup, uc chan Update) {
 	// signal to stop waiting on this goroutine when function is finished executing
 	defer wg.Done()
-  rand.Seed(int64(time.Now().Nanosecond()))
+	rand.Seed(int64(time.Now().Nanosecond()))
 
 	// while the philosopher is hungry
 	for p.apetite > 0 {
 
-		fmt.Printf("Philosopher %d is thinking\n", p.id)
+		// fmt.Printf("Philosopher %d is thinking\n", p.id)
+		uc <- *NewUpdate(p.id, p.apetite, Thinking)
 
 		// even philosophers reach for left fork then right
-		if p.id % 2 == 0 {
+		if p.id%2 == 0 {
 			p.leftFork.Lock()
 			p.rightFork.Lock()
 		} else {
@@ -58,14 +106,52 @@ func (p Philosopher) Dine(wg *sync.WaitGroup) {
 			p.leftFork.Lock()
 		}
 
-		fmt.Printf("Philosopher %d is eating\n", p.id)
-		time.Sleep(time.Duration(rand.Intn(80)) * time.Millisecond)
+		// fmt.Printf("Philosopher %d is eating\n", p.id)
+		uc <- *NewUpdate(p.id, p.apetite, Eating)
+		time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 
 		// release hold of forks (order doesn't matter here)
 		p.leftFork.Unlock()
 		p.rightFork.Unlock()
 		// decrement apetite
 		p.apetite--
+	}
+	uc <- *NewUpdate(p.id, p.apetite, Finished)
+}
+
+func DineManager(philosophers []Philosopher, numPhilosophers int, updatesChannel chan Update) {
+	defer close(updatesChannel)
+	var wg sync.WaitGroup
+	wg.Add(numPhilosophers)
+	for i := 0; i < numPhilosophers; i++ {
+		go philosophers[i].Dine(&wg, updatesChannel)
+	}
+	wg.Wait()
+}
+
+func RenderProgress(apetite int, startingApetite int) string {
+  totalCols := 20
+  prcnt := 1 - (float32(apetite) / float32(startingApetite))
+  filledCols := int(float32(totalCols) * prcnt)
+  result := fmt.Sprintf("[%s%s] %d%%", strings.Repeat("#", filledCols), strings.Repeat(" ", totalCols-filledCols), int(prcnt * float32(100)))
+  return result
+}
+
+func RenderState(state map[int]Update, startingApetite int) {
+	// clear screen
+	fmt.Printf("\033[2J")
+	// for _, p := range state {
+  for i := 0; i < len(state); i++ {
+    p := state[i]
+		tabs := "\t"
+		if p.status == Eating {
+			tabs += "\t"
+		}
+    emoji, err := GetStatusEmoji(p.status)
+    if err != nil {
+      panic(err)
+    }
+		fmt.Printf("Philosopher:\t%d\t%s%s\t%s\tApetite: %d\t%s\n", p.philosopherId, p.status, tabs, emoji, p.apetite, RenderProgress(p.apetite, startingApetite))
 	}
 }
 
@@ -104,11 +190,20 @@ func main() {
 	for i := 0; i < numPhilosophers; i++ {
 		philosophers = append(philosophers, *NewPhilosopher(i, startingApetite, &forks[getLeftFork(i, numPhilosophers)], &forks[i]))
 	}
+  // set up philosopher update map
+	philosopherState := map[int]Update{}
+  for i, p := range philosophers {
+    philosopherState[i] = *NewUpdate(p.id, p.apetite, Unseated)
+  }
 
-	var wg sync.WaitGroup
-	wg.Add(numPhilosophers)
-	for i := 0; i < numPhilosophers; i++ {
-		go philosophers[i].Dine(&wg)
+	// Should be plenty of space in the buffer for philosopher updates to flow in a queue
+	updatesChannel := make(chan Update, numPhilosophers)
+	// Start the dining manager
+	go DineManager(philosophers, numPhilosophers, updatesChannel)
+	for update := range updatesChannel {
+		// fmt.Printf("Philosopher %d is %s. Apetite = %d\n", update.philosopherId, update.status, update.apetite)
+		philosopherState[update.philosopherId] = update
+		// display state
+		RenderState(philosopherState, startingApetite)
 	}
-	wg.Wait()
 }
